@@ -14,17 +14,21 @@ def main():
     p = r.pubsub(ignore_subscribe_messages=True)
     p.subscribe('skcc-down')
 
-
-    def irc_client(call, status):
+    def irc_client(call, status, info):
         r = redis.Redis(host='localhost', port=6379)
         p = r.pubsub(ignore_subscribe_messages=True)
         p.subscribe('skcc-down')
         print("I am IRC client for {}, starting to listen for Redis messages.\n".format(call))
 
+        # IRC does not allow nick names starting with a number, so prefix it
+        # with _
+        if call[0].isnumeric():
+            call = "_" + call
+
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect(("localhost", 6655))
         client.send(bytes('NICK ' + call + '\r\n', encoding='utf8'))
-        client.send(bytes('USER ' + call + ' 0 * :' + 'SKCC nerd' + '\r\n', encoding='utf8'))
+        client.send(bytes('USER ' + call + ' 0 * :' + info + '\r\n', encoding='utf8'))
         client.send(bytes('JOIN #skcc\r\n',encoding='utf8'))
         client.send(bytes('PRIVMSG #skcc :\x01ACTION ' + status + '\x01\r\n', encoding='utf8'))
         client.setblocking(0)
@@ -79,11 +83,12 @@ def main():
                     # ["YL3JD","14.049",1,"Hanz","21931T","Ikskile","LAT","Latvia",true]
                     call = u[0]
                     status = u[1]
+                    info = u[3]+" "+u[4]+" "+u[5]+" "+u[6]
                     if call in users:
                         print("User {} already exists.\n".format(call))
                         del users[call]
                     print("Creating new user {}.\n".format(call))
-                    users[call] = threading.Thread(target=irc_client, args=(call, status, ))
+                    users[call] = threading.Thread(target=irc_client, args=(call, status, info, ))
                     users[call].daemon = True
                     users[call].start()
             if 'add-user' in obj:
@@ -91,12 +96,13 @@ def main():
                 u = obj['add-user']
                 call = u[0]
                 status = u[1]
+                info = u[3]+" "+u[4]+" "+u[5]+" "+u[6]
                 if call in users:
                     print("User {} already exists.\n".format(call))
                     del users[call]
 
                 print("Creating new user {}.\n".format(call))
-                users[call] = threading.Thread(target=irc_client, args=(call, status, ))
+                users[call] = threading.Thread(target=irc_client, args=(call, status, info, ))
                 users[call].daemon = True
                 users[call].start()
 
