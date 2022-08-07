@@ -6,9 +6,13 @@ import socket
 import time
 import json
 import select
+import re
+
+
 
 def main():
     users = dict()
+    mynick = "so5cw"        # nickname on IRC that will be forwarded to SKCC chat
 
     r = redis.Redis(host='localhost', port=6379)
     p = r.pubsub(ignore_subscribe_messages=True)
@@ -30,7 +34,8 @@ def main():
         client.send(bytes('NICK ' + call + '\r\n', encoding='utf8'))
         client.send(bytes('USER ' + call + ' 0 * :' + info + '\r\n', encoding='utf8'))
         client.send(bytes('JOIN #skcc\r\n',encoding='utf8'))
-        client.send(bytes('PRIVMSG #skcc :\x01ACTION ' + status + '\x01\r\n', encoding='utf8'))
+        if status != "":
+            client.send(bytes('PRIVMSG #skcc :\x01ACTION ' + status + '\x01\r\n', encoding='utf8'))
         client.setblocking(0)
         while True:
             # read redis msg
@@ -49,25 +54,42 @@ def main():
                         if obj['msgs'][2][i][2] == call:
                             client.send(bytes('PRIVMSG #skcc :' + obj['msgs'][2][i][4] + '\r\n', encoding='utf8'))
 
-                if 'status' in obj and obj['status'][0] == call:
+                if 'status' in obj and obj['status'][0] == call and obj['status'][1] != "":
                     client.send(bytes('PRIVMSG #skcc :\x01ACTION ' + obj['status'][1] + '\x01\r\n', encoding='utf8'))
 
             time.sleep(0.2)
-            # read from IRC server. only handle pings
+
+            # read from IRC server
             ready = select.select([client], [], [], 0.1)
             if ready[0]:
                 data = client.recv(2048).decode('utf8')
                 lines = data.split('\r\n')
                 for line in lines:
                     print(call + ':' +line)
+                    # reply to a PING message sent from the server
                     if line[0:4] == "PING":
                         client.send(bytes("PONG " + line.split()[1] + "\r\n", encoding='utf8'))
                         print(call + 'PONG !!!')
+                    # If we receive a direct message, forward it appropriately
                     # NQ8T:b':so5cw!fabian@127.0.0.1 PRIVMSG nq8t :test'
                     if line.find("PRIVMSG " + call.lower() + " :") != -1:
                         rxmsg = line.split("PRIVMSG " + call.lower() + " :")[1]
                         print(call + " received direct message :" + rxmsg)
+                    # If we send something to the channel, forward it, but only
+                    # if we're "skcc"
+                    # :DJ5CW!DJ5CW@127.0.0.1 PRIVMSG #skcc :buongiorno Raz
+                    # {"msg":["DJ5CW","buongiorno Raz"]}
+                    m = re.match(":" + mynick + "!.* PRIVMSG #skcc :(.*)", line)
+                    if m and call == "skcc":
+                        txmsg = m.groups(0)[0]
+                        r.publish('skcc-up', '{"msg":["DJ5CW","' + txmsg + '"]}')
 
+    # launch "skcc" user client who will do stuff such as setting the channel topic
+    # and receive messages sent in the channel that will be forwarded to the
+    # websocket
+    skccu = threading.Thread(target=irc_client, args=('skcc', '', 'SKCC bot', ))
+    skccu.daemon = True
+    skccu.start()
 
     while True:
         time.sleep(0.5)
@@ -105,19 +127,6 @@ def main():
                 users[call] = threading.Thread(target=irc_client, args=(call, status, info, ))
                 users[call].daemon = True
                 users[call].start()
-
-
-
-#    def rx_thread():
-#        while True:
-#            result = ws.recv()
-#            print("Received '{}'".format(result))
-#            r.publish("skcc-down", result)
-#        ws.close()
-#
-#    thread = threading.Thread(target=rx_thread)
-#   thread.daemon = True
-#    thread.start()
 
 
 if __name__ == "__main__":
