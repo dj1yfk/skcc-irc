@@ -13,6 +13,7 @@ import re
 def main():
     users = dict()
     mynick = "so5cw"        # nickname on IRC that will be forwarded to SKCC chat
+    mycall = "DJ5CW"        # nick on Chat
 
     r = redis.Redis(host='localhost', port=6379)
     p = r.pubsub(ignore_subscribe_messages=True)
@@ -53,9 +54,12 @@ def main():
                     for i in range(0, len(obj['msgs'][2])):
                         if obj['msgs'][2][i][2] == call:
                             client.send(bytes('PRIVMSG #skcc :' + obj['msgs'][2][i][4] + '\r\n', encoding='utf8'))
-
                 if 'status' in obj and obj['status'][0] == call and obj['status'][1] != "":
                     client.send(bytes('PRIVMSG #skcc :\x01ACTION ' + obj['status'][1] + '\x01\r\n', encoding='utf8'))
+                if 'logged-in' in obj and call == "skcc":
+                    client.send(bytes('PRIVMSG #skcc :Logged in: ' + str(obj['logged-in']) + '\r\n', encoding='utf8'))
+                if 'memberlookup-info' in obj and call == "skcc":
+                    client.send(bytes('PRIVMSG #skcc :Lookup: ' + str(obj['memberlookup-info']) + '\r\n', encoding='utf8'))
 
             time.sleep(0.2)
 
@@ -76,13 +80,34 @@ def main():
                         rxmsg = line.split("PRIVMSG " + call.lower() + " :")[1]
                         print(call + " received direct message :" + rxmsg)
                     # If we send something to the channel, forward it, but only
-                    # if we're "skcc"
+                    # if we're "skcc". Messages starting with ! will be handled
+                    # as commands (e.g. to change the status, log in, etc.
                     # :DJ5CW!DJ5CW@127.0.0.1 PRIVMSG #skcc :buongiorno Raz
                     # {"msg":["DJ5CW","buongiorno Raz"]}
                     m = re.match(":" + mynick + "!.* PRIVMSG #skcc :(.*)", line)
                     if m and call == "skcc":
                         txmsg = m.groups(0)[0]
-                        r.publish('skcc-up', '{"msg":["DJ5CW","' + txmsg + '"]}')
+                        if txmsg[0] == "!":     # text command
+                            cmd, param = txmsg.split(" ", 1)
+                            if cmd == "!status":
+                                pass
+                            elif cmd == "!login":
+                                # tx: # {"login":{"callsign":"DJ5CW","password":"..."}}
+                                # rx: {"logged-in":["DJ5CW","3873-881923",true,false,"Coffee & CW - 10123.4 kHz","Fabian","1982T","Munich","GER","Fed. Rep. of Germany",true]}
+                                # tx: {"ready":1}
+                                # tx: {"get-verified-status":1}  # needed??
+                                r.publish('skcc-up', '{"login":{"callsign": "'+ mycall +'","password":"' + param + '"}}')
+                            elif cmd == "!lookup":
+                                r.publish('skcc-up', '{"memberlookup":"' + param +'"}')
+                            elif cmd == "!logout":
+                                r.publish('skcc-up', '{"logout":1}')
+                            elif cmd == "!status":
+                                r.publish('skcc-up', '{"status":"' + param + '"}')
+                            else:
+                                print("Unknown command")
+                        
+                        else:   # normal message
+                            r.publish('skcc-up', '{"msg":["DJ5CW","' + txmsg + '"]}')
 
     # launch "skcc" user client who will do stuff such as setting the channel topic
     # and receive messages sent in the channel that will be forwarded to the
