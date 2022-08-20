@@ -1,6 +1,6 @@
 # SKCC Sked Page IRC bridge
 
-This is a Python scripts to use the [SKCC Sked page](https://sked.skccgroup.com/) 
+This is a Python script which allows you to use the [SKCC Sked page](https://sked.skccgroup.com/) 
 with any IRC client.
 
 The SKCC Sked Page is a web based application that allows members of the [Straight Key Century
