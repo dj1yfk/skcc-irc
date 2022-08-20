@@ -58,8 +58,8 @@ def main():
                         if obj['msgs'][2][0][2] == call:
                             client.send(bytes('PRIVMSG #skcc :' + obj['msgs'][2][0][4] + '\r\n', encoding='utf8'))
                     # multiple messages (happens when you join): Print in all channel as "skcc" user in correct order
-                    for i in reversed(range(0, len(obj['msgs'][2]))):
-                        if call == 'skcc':
+                    elif call == 'skcc':
+                        for i in reversed(range(0, len(obj['msgs'][2]))):
                             dt = datetime.utcfromtimestamp(int(obj['msgs'][2][i][1]))
                             ts = dt.strftime("%H:%M:%S")
                             client.send(bytes('PRIVMSG #skcc :' + ts + " " + obj['msgs'][2][i][2] + ': ' + obj['msgs'][2][i][4] + '\r\n', encoding='utf8'))
