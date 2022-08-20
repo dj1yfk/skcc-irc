@@ -50,9 +50,14 @@ def main_irc():
     mycall = "dj5cw"        # nick on Chat
     mypw   = "skcc"         # password 
 
-    #with open(os.environ['HOME'] + "/.config/skcc-irc/config.py") as f:
-    #    s = f.read()
-    #eval(s)
+    with open(os.environ['HOME'] + "/.config/skcc-irc/config.json") as f:
+        s = f.read()
+    cfg = json.loads(s)
+
+    if "mycall" in cfg:
+        mycall = cfg['mycall']
+    if "mypw" in cfg:
+        mypw = cfg['mypw']
 
     logging.info("main_irc thread starting. mycall = {}\n".format(mycall))
 
@@ -102,9 +107,9 @@ def main_irc():
                     if len(obj['msgs'][2]) == 1:
                         if obj['msgs'][2][0][2] == call:
                             client.send(bytes('PRIVMSG #skcc :' + obj['msgs'][2][0][4] + '\r\n', encoding='utf8'))
-                    # multiple messages (happens when you join): Print in all channel as "skcc" user in correct order
+                    # multiple messages (happens when you join): Print last 10 in all channel as "skcc" user in correct order
                     elif call == 'skcc':
-                        for i in reversed(range(0, len(obj['msgs'][2]))):
+                        for i in reversed(range(0, 10)):
                             dt = datetime.utcfromtimestamp(int(obj['msgs'][2][i][1]))
                             ts = dt.strftime("%H:%M:%S")
                             client.send(bytes('PRIVMSG #skcc :' + ts + " " + obj['msgs'][2][i][2] + ': ' + obj['msgs'][2][i][4] + '\r\n', encoding='utf8'))
