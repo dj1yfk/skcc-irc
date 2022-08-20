@@ -7,46 +7,91 @@ import time
 import json
 import select
 import re
+import os
+import logging
 from datetime import datetime
+from websocket import create_connection
 
 
+def main_ws():
+    logging.info("Starting main_ws thread\n")
+    ws = create_connection("wss://sked.skccgroup.com/sked")
 
-def main():
+    r = redis.Redis(host='localhost', port=6379)
+    p = r.pubsub(ignore_subscribe_messages=True)
+    p.subscribe('skcc-up')
+
+    def rx_thread():
+        while True:
+            result = ws.recv()
+            logging.debug("Received '{}'".format(result))
+            r.publish("skcc-down", result)
+            # ugly hack: after user joins, delay further messages, so the IRC
+            # client can join
+            if result.find("add-user") > 0: 
+                logging.debug("Add user - delaying 2 seconds.")
+                time.sleep(2)
+        ws.close()
+
+    thread = threading.Thread(target=rx_thread)
+    thread.daemon = True
+    thread.start()
+
+    while True:
+        message = p.get_message()
+        if message:
+            ws.send(message['data'])
+        time.sleep(1)
+
+
+# IRC class that spawns new irc clients for each visitor of the chat
+def main_irc():
     users = dict()
-    mynick = "so5cw"        # nickname on IRC that will be forwarded to SKCC chat
-    mycall = "DJ5CW"        # nick on Chat
+    mycall = "dj5cw"        # nick on Chat
+    mypw   = "skcc"         # password 
+
+    #with open(os.environ['HOME'] + "/.config/skcc-irc/config.py") as f:
+    #    s = f.read()
+    #eval(s)
+
+    logging.info("main_irc thread starting. mycall = {}\n".format(mycall))
 
     r = redis.Redis(host='localhost', port=6379)
     p = r.pubsub(ignore_subscribe_messages=True)
     p.subscribe('skcc-down')
 
+    # individual IRC client that belongs to "call"
     def irc_client(call, status, info):
         r = redis.Redis(host='localhost', port=6379)
         p = r.pubsub(ignore_subscribe_messages=True)
         p.subscribe('skcc-down')
-        print("I am IRC client for {}, starting to listen for Redis messages.\n".format(call))
+        logging.info("I am IRC client for {}, starting to listen for Redis messages.\n".format(call))
 
         # IRC does not allow nick names starting with a number, so prefix it
-        # with _
-        if call[0].isnumeric():
-            call = "_" + call
+        # with _. Do the same for the user's *own* call.
+        if call[0].isnumeric() or call.lower() == mycall.lower():
+            nick = "_" + call
+        else:
+            nick = call
+
+        logging.info("I am the IRC client for {} (nickname {}), starting to listen for Redis messages.\n".format(call, nick))
 
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect(("localhost", 6655))
-        client.send(bytes('NICK ' + call + '\r\n', encoding='utf8'))
+        client.send(bytes('NICK ' + nick + '\r\n', encoding='utf8'))
         client.send(bytes('USER ' + call + ' 0 * :' + info + '\r\n', encoding='utf8'))
         client.send(bytes('JOIN #skcc\r\n',encoding='utf8'))
         if status != "":
             client.send(bytes('PRIVMSG #skcc :\x01ACTION ' + status + '\x01\r\n', encoding='utf8'))
         client.setblocking(0)
         while True:
-            # read redis msg
+            # read redis msg coming from chat server
             message = p.get_message()
             if message:
                 obj = json.loads(message['data'])
-                print(call + ":" + repr(obj))
+                logging.debug(call + ":" + repr(obj))
                 if 'remove-user' in obj and obj['remove-user'] == call:
-                    print("I must die now")
+                    logging.info("I must die now")
                     return
 
                 # {"msgs":[false,0,[[2142129,1659775906,"VK4HQ",null,"VK2DVA - Hi Colin"]]]}
@@ -72,28 +117,28 @@ def main():
 
             time.sleep(1)
 
-            # read from IRC server
+            # read messages from IRC server
             ready = select.select([client], [], [], 0.1)
             if ready[0]:
                 data = client.recv(2048).decode('utf8')
                 lines = data.split('\r\n')
                 for line in lines:
-                    print(call + ':' +line)
+                    logging.debug("RX from IRC server (client {}): {}".format(call, line))
                     # reply to a PING message sent from the server
                     if line[0:4] == "PING":
                         client.send(bytes("PONG " + line.split()[1] + "\r\n", encoding='utf8'))
-                        print(call + ': PONG')
+                        logging.debug(call + ': PONG')
                     # If we receive a direct message, forward it appropriately
                     # NQ8T:b':so5cw!fabian@127.0.0.1 PRIVMSG nq8t :test'
-                    if line.find("PRIVMSG " + call.lower() + " :") != -1:
-                        rxmsg = line.split("PRIVMSG " + call.lower() + " :")[1]
-                        print(call + " received direct message :" + rxmsg)
+                    if line.find("PRIVMSG " + nick.lower() + " :") != -1:
+                        rxmsg = line.split("PRIVMSG " + nick.lower() + " :")[1]
+                        logging.debug(call + " received direct message :" + rxmsg)
                     # If we send something to the channel, forward it, but only
                     # if we're "skcc". Messages starting with ! will be handled
                     # as commands (e.g. to change the status, log in, etc.
                     # :DJ5CW!DJ5CW@127.0.0.1 PRIVMSG #skcc :buongiorno Raz
                     # {"msg":["DJ5CW","buongiorno Raz"]}
-                    m = re.match(":" + mynick + "!.* PRIVMSG #skcc :(.*)", line)
+                    m = re.match(":" + mycall + "!.* PRIVMSG #skcc :(.*)", line, re.IGNORECASE)
                     if m and call == "skcc":
                         txmsg = m.groups(0)[0]
                         if txmsg[0] == "!":     # text command
@@ -125,10 +170,14 @@ def main():
                             elif cmd == "!active":
                                 r.publish('skcc-up', '{"active": 1}')
                             else:
-                                print("Unknown command")
+                                logging.warning("{}: Unknown command: {}".format(call, txmsg))
+
+                            # for good measure, indicate that we're still active
+                            r.publish('skcc-up', '{"active": 1}')
                         
                         else:   # normal message
                             r.publish('skcc-up', '{"msg":["DJ5CW","' + txmsg + '"]}')
+                            r.publish('skcc-up', '{"active": 1}')
 
     # launch "skcc" user client who will do stuff such as setting the channel topic
     # and receive messages sent in the channel that will be forwarded to the
@@ -137,6 +186,17 @@ def main():
     skccu.daemon = True
     skccu.start()
 
+    # log in
+    r.publish('skcc-up', '{"login":{"callsign": "'+ mycall.upper() +'","password":"' + mypw + '"}}')
+
+    time.sleep(0.5)
+
+    # send indication to chat server that we are ready - this will return the
+    # message history and the current users
+    r.publish('skcc-up', '{"ready": 1}')
+
+    # Main loop of IRC client. We wait for messages and launch new IRC
+    # clients if someone joins.
     while True:
         time.sleep(0.5)
         message = p.get_message()
@@ -153,9 +213,9 @@ def main():
                     status = u[1]
                     info = u[3]+" "+u[4]+" "+u[5]+" "+u[6]
                     if call in users:
-                        print("User {} already exists.\n".format(call))
+                        logging.warning("User {} already exists.\n".format(call))
                         del users[call]
-                    print("Creating new user {}.\n".format(call))
+                    logging.info("Creating new user {}.\n".format(call))
                     users[call] = threading.Thread(target=irc_client, args=(call, status, info, ))
                     users[call].daemon = True
                     users[call].start()
@@ -166,10 +226,10 @@ def main():
                 status = u[1]
                 info = u[3]+" "+u[4]+" "+u[5]+" "+u[6]
                 if call in users:
-                    print("User {} already exists.\n".format(call))
+                    logging.warning("User {} already exists.\n".format(call))
                     del users[call]
 
-                print("Creating new user {}.\n".format(call))
+                logging.info("Creating new user {}.\n".format(call))
                 users[call] = threading.Thread(target=irc_client, args=(call, status, info, ))
                 users[call].daemon = True
                 users[call].start()
@@ -177,6 +237,22 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        logging.basicConfig(encoding='utf-8', level=logging.DEBUG)
+
+        # start websocket main thread
+        wst = threading.Thread(target=main_ws)
+        wst.daemon = True
+        wst.start()
+
+        time.sleep(5)
+
+        # start IRC main thread
+        irt = threading.Thread(target=main_irc)
+        irt.daemon = True
+        irt.start()
+
+        while True:
+            time.sleep(1000)
+
     except Exception as e:
         print(e)
