@@ -7,6 +7,7 @@ import time
 import json
 import select
 import re
+from datetime import datetime
 
 
 
@@ -51,9 +52,17 @@ def main():
                 # {"msgs":[false,0,[[2142129,1659775906,"VK4HQ",null,"VK2DVA - Hi Colin"]]]}
                 # {"msgs":[false,0,[[2142163,1659787973,"JR2IUB",null,"MNI TNX TO ALL.  Lots of JA stations are QRV on skcc area on 20m.  Have a great day. 73,  Take"]]]}
                 if 'msgs' in obj:
-                    for i in range(0, len(obj['msgs'][2])):
-                        if obj['msgs'][2][i][2] == call:
-                            client.send(bytes('PRIVMSG #skcc :' + obj['msgs'][2][i][4] + '\r\n', encoding='utf8'))
+                    # single message: Print in channel if it matches our
+                    # callsign of this IRC client instance
+                    if len(obj['msgs'][2]) == 1:
+                        if obj['msgs'][2][0][2] == call:
+                            client.send(bytes('PRIVMSG #skcc :' + obj['msgs'][2][0][4] + '\r\n', encoding='utf8'))
+                    # multiple messages (happens when you join): Print in all channel as "skcc" user in correct order
+                    for i in reversed(range(0, len(obj['msgs'][2]))):
+                        if call == 'skcc':
+                            dt = datetime.utcfromtimestamp(int(obj['msgs'][2][i][1]))
+                            ts = dt.strftime("%H:%M:%S")
+                            client.send(bytes('PRIVMSG #skcc :' + ts + " " + obj['msgs'][2][i][2] + ': ' + obj['msgs'][2][i][4] + '\r\n', encoding='utf8'))
                 if 'status' in obj and obj['status'][0] == call and obj['status'][1] != "":
                     client.send(bytes('PRIVMSG #skcc :\x01ACTION ' + obj['status'][1] + '\x01\r\n', encoding='utf8'))
                 if 'logged-in' in obj and call == "skcc":
@@ -61,7 +70,7 @@ def main():
                 if 'memberlookup-info' in obj and call == "skcc":
                     client.send(bytes('PRIVMSG #skcc :Lookup: ' + str(obj['memberlookup-info']) + '\r\n', encoding='utf8'))
 
-            time.sleep(0.2)
+            time.sleep(1)
 
             # read from IRC server
             ready = select.select([client], [], [], 0.1)
@@ -73,7 +82,7 @@ def main():
                     # reply to a PING message sent from the server
                     if line[0:4] == "PING":
                         client.send(bytes("PONG " + line.split()[1] + "\r\n", encoding='utf8'))
-                        print(call + 'PONG !!!')
+                        print(call + ': PONG')
                     # If we receive a direct message, forward it appropriately
                     # NQ8T:b':so5cw!fabian@127.0.0.1 PRIVMSG nq8t :test'
                     if line.find("PRIVMSG " + call.lower() + " :") != -1:
@@ -88,10 +97,14 @@ def main():
                     if m and call == "skcc":
                         txmsg = m.groups(0)[0]
                         if txmsg[0] == "!":     # text command
-                            cmd, param = txmsg.split(" ", 1)
-                            if cmd == "!status":
-                                pass
-                            elif cmd == "!login":
+
+                            if ' ' in txmsg:
+                                cmd, param = txmsg.split(" ", 1)
+                            else:
+                                cmd = txmsg
+                                param = ""
+
+                            if cmd == "!login":
                                 # tx: # {"login":{"callsign":"DJ5CW","password":"..."}}
                                 # rx: {"logged-in":["DJ5CW","3873-881923",true,false,"Coffee & CW - 10123.4 kHz","Fabian","1982T","Munich","GER","Fed. Rep. of Germany",true]}
                                 # tx: {"ready":1}
@@ -103,6 +116,14 @@ def main():
                                 r.publish('skcc-up', '{"logout":1}')
                             elif cmd == "!status":
                                 r.publish('skcc-up', '{"status":"' + param + '"}')
+                            elif cmd == "!ready":
+                                r.publish('skcc-up', '{"ready": 1}')
+                            elif cmd == "!back":
+                                r.publish('skcc-up', '{"back": 1}')
+                            elif cmd == "!away":
+                                r.publish('skcc-up', '{"away": 1}')
+                            elif cmd == "!active":
+                                r.publish('skcc-up', '{"active": 1}')
                             else:
                                 print("Unknown command")
                         
