@@ -53,6 +53,20 @@ are prefixed with an exclamation mark):
 
 * `!login <password>` - Log in again with the given password
 
+A screenshot (with irssi as the client) is shown below.
+
+![SKCC IRC Screenshot](doc/skcc-irc.png)
+
+## Limitations
+
+Currently the following functions are not implemented yet:
+
+- Deleting your own messages
+
+- Updates of messages sent by other users
+
+- Personal messages
+
 
 ## Requirements
 
