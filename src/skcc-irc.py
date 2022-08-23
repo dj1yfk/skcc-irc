@@ -88,6 +88,10 @@ def main_irc():
         client.send(bytes('JOIN #skcc\r\n',encoding='utf8'))
         if status != "":
             client.send(bytes('PRIVMSG #skcc :\x01ACTION ' + status + '\x01\r\n', encoding='utf8'))
+
+        if call == "skcc":
+            client.send(bytes('TOPIC #skcc :SKCC Sked Page <-> IRC bridge\r\n', encoding='utf8'));
+
         client.setblocking(0)
         while True:
             # read redis msg coming from chat server
@@ -199,6 +203,10 @@ def main_irc():
     # send indication to chat server that we are ready - this will return the
     # message history and the current users
     r.publish('skcc-up', '{"ready": 1}')
+
+    # tell the server we don't want to get PMs (not implemented yet in this
+    # IRC bridge)
+    r.publish('skcc-up', '{"allow-pms":false}')
 
     # Main loop of IRC client. We wait for messages and launch new IRC
     # clients if someone joins.
