@@ -67,6 +67,7 @@ def main_irc():
 
     # individual IRC client that belongs to "call"
     def irc_client(call, status, info):
+        messages = dict()
         r = redis.Redis(host='localhost', port=6379)
         p = r.pubsub(ignore_subscribe_messages=True)
         p.subscribe('skcc-down')
@@ -100,7 +101,8 @@ def main_irc():
                 obj = json.loads(message['data'])
                 logging.debug(call + ":" + repr(obj))
                 if 'remove-user' in obj and obj['remove-user'] == call:
-                    logging.info("I must die now")
+                    logging.info(call + ": remove-user")
+                    del users[call]
                     return
 
                 # {"msgs":[false,0,[[2142129,1659775906,"VK4HQ",null,"VK2DVA - Hi Colin"]]]}
@@ -111,6 +113,13 @@ def main_irc():
                     if len(obj['msgs'][2]) == 1:
                         if obj['msgs'][2][0][2] == call:
                             client.send(bytes('PRIVMSG #skcc :' + obj['msgs'][2][0][4] + '\r\n', encoding='utf8'))
+                            # save message under its ID (in case it will be edited or deleted later)
+                            messages[obj['msgs'][2][0][0]] = obj['msgs'][2][0][4]
+                        # the person who speaks is not in the channel (should
+                        # not happen, but occasionally does!), so let 'skcc'
+                        # user say it
+                        elif (obj['msgs'][2][0][2] not in users) and (call == 'skcc'):
+                            client.send(bytes('PRIVMSG #skcc :' + obj['msgs'][2][0][2] + ': ' + obj['msgs'][2][0][4] + '\r\n', encoding='utf8'))
                     # multiple messages (happens when you join): Print last 10 in all channel as "skcc" user in correct order
                     elif call == 'skcc':
                         for i in reversed(range(0, 10)):
@@ -123,6 +132,10 @@ def main_irc():
                     client.send(bytes('PRIVMSG #skcc :Logged in: ' + str(obj['logged-in']) + '\r\n', encoding='utf8'))
                 if 'memberlookup-info' in obj and call == "skcc":
                     client.send(bytes('PRIVMSG #skcc :Lookup: ' + str(obj['memberlookup-info']) + '\r\n', encoding='utf8'))
+                # {'update': [2152078, 'new message']}
+                if 'update' in obj and obj['update'][0] in messages:
+                    client.send(bytes('PRIVMSG #skcc :<update> ' + messages[obj[0]] + '\r\n', encoding='utf8'))
+
 
             time.sleep(1)
 
@@ -214,6 +227,7 @@ def main_irc():
         time.sleep(0.5)
         message = p.get_message()
         if message:
+#            logging.debug("Users online now: {}".format(repr(users)))
             obj = json.loads(message['data'])
 
             if 'add-users' in obj:
