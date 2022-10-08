@@ -39,9 +39,9 @@ are prefixed with an exclamation mark):
 
 * `!lookup <call>` - Retrieve SKCC user information for the given callsign
 
-* `!status <text>` - Update your status to <text>
+* `!status <text>` - Update your status to &lt;text&gt;
 
-* `!ready` - Reinitialize the chat. This will print the chat history into the channel
+* `!ready` - Reinitialize the chat. This will print the chat history (last 10 messages) into the channel
 
 * `!back` - If you were absent, this will put you back into the list of active users
 
@@ -63,7 +63,7 @@ Currently the following functions are not implemented yet:
 
 - Deleting your own messages
 
-- Updates of messages sent by other users
+- ~~Updates of messages sent by other users~~
 
 - Personal messages
 
@@ -81,7 +81,7 @@ The following is required to run the SKCC IRC bridge.
 On a freshly installed Ubuntu 22.04 machine, the dependencies can be satisfied like this:
 
 ```
-sudo apt-get install redis python3-redis python3-websocket python3-pip
+sudo apt-get install screen redis python3-redis python3-websocket python3-pip
 python3 -m pip install miniircd
 ``` 
 
