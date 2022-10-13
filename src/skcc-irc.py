@@ -134,7 +134,7 @@ def main_irc():
                     client.send(bytes('PRIVMSG #skcc :Lookup: ' + str(obj['memberlookup-info']) + '\r\n', encoding='utf8'))
                 # {'update': [2152078, 'new message']}
                 if 'update' in obj and obj['update'][0] in messages:
-                    client.send(bytes('PRIVMSG #skcc :<update> old: ' + messages[obj['update'][0]] + ' new: ' + obj['update'][1]  +  '\r\n', encoding='utf8'))
+                    client.send(bytes('PRIVMSG #skcc :<update> ' + obj['update'][1]  +  '\r\n', encoding='utf8'))
 
 
             time.sleep(1)
