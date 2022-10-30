@@ -135,7 +135,26 @@ def main_irc():
                 # {'update': [2152078, 'new message']}
                 if 'update' in obj and obj['update'][0] in messages:
                     client.send(bytes('PRIVMSG #skcc :<update> ' + obj['update'][1]  +  '\r\n', encoding='utf8'))
-
+                if 'pm-msgs' in obj:
+                    pmsgs = obj['pm-msgs'][2][2]
+                    lastmsg = 0
+                    for i in reversed(range(0, len(pmsgs))):
+                        m = pmsgs[i]
+                        # if recipient of sender matches our client call, make
+                        # this a IRC privmsg.
+                        if m[2] == call or m[3] == call: 
+                            msg = m[4]
+                            if m[3] == call: # we sent it
+                                msg = mycall + ": " + msg
+                            else:
+                                lastmsg = m[0]  # remember latest message ID so we can set the "read" flag for it
+                            if int(m[1]) - time.time() > 360: # old message (< 6 minutes old => print timestamp in front)
+                                dt = datetime.utcfromtimestamp(int(m[1]))
+                                ts = dt.strftime("%H:%M:%S")
+                                msg = ts + ' ' + msg
+                            client.send(bytes('PRIVMSG ' + mycall + ' :' + msg +' \r\n', encoding='utf8'))
+                    if lastmsg > 0:
+                        r.publish('skcc-up', '{"read":["' + call + '",' + str(lastmsg) + ']}');
 
             time.sleep(1)
 
@@ -151,10 +170,13 @@ def main_irc():
                         client.send(bytes("PONG " + line.split()[1] + "\r\n", encoding='utf8'))
                         logging.debug(call + ': PONG')
                     # If we receive a direct message, forward it appropriately
-                    # NQ8T:b':so5cw!fabian@127.0.0.1 PRIVMSG nq8t :test'
-                    if line.find("PRIVMSG " + nick.lower() + " :") != -1:
-                        rxmsg = line.split("PRIVMSG " + nick.lower() + " :")[1]
-                        logging.debug(call + " received direct message :" + rxmsg)
+                    # :dj5cw!fabian@127.0.0.1 PRIVMSG PG4I :test from IRC
+                    if line.find("PRIVMSG " + nick + " :") != -1:
+                        rxmsg = line.split("PRIVMSG " + nick + " :")[1]
+                        rep = '{"pm-msg": ["' + mycall + '", "' + nick + '", "' + rxmsg + '"]}'
+                        logging.debug(call + " received direct message :" + rxmsg + " => " + rep)
+                        r.publish('skcc-up', rep)
+                         
                     # If we send something to the channel, forward it, but only
                     # if we're "skcc". Messages starting with ! will be handled
                     # as commands (e.g. to change the status, log in, etc.
@@ -217,9 +239,8 @@ def main_irc():
     # message history and the current users
     r.publish('skcc-up', '{"ready": 1}')
 
-    # tell the server we don't want to get PMs (not implemented yet in this
-    # IRC bridge)
-    r.publish('skcc-up', '{"allow-pms":false}')
+    # tell the server we want to allow PMs
+    r.publish('skcc-up', '{"allow-pms":true}')
 
     # Main loop of IRC client. We wait for messages and launch new IRC
     # clients if someone joins.

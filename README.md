@@ -65,7 +65,7 @@ Currently the following functions are not implemented yet:
 
 - ~~Updates of messages sent by other users~~
 
-- Personal messages
+- ~~Personal messages~~
 
 
 ## Requirements
