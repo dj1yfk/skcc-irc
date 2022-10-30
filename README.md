@@ -65,7 +65,8 @@ Currently the following functions are not implemented yet:
 
 - ~~Updates of messages sent by other users~~
 
-- ~~Personal messages~~
+- ~~Personal messages~~ PMs are implemented, but currently only "active" users
+  (which show up in the list) are able to send and receive PMs via IRC.
 
 
 ## Requirements
