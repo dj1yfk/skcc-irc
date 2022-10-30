@@ -140,9 +140,8 @@ def main_irc():
                     lastmsg = 0
                     for i in reversed(range(0, len(pmsgs))):
                         m = pmsgs[i]
-                        # if recipient of sender matches our client call, make
-                        # this a IRC privmsg.
-                        if m[2] == call or m[3] == call: 
+                        # if recipient or sender matches our client call, make this a IRC privmsg.
+                        if (m[2] == call and m[3] == mycall) or (m[2] == mycall and m[3] == call): 
                             msg = m[4]
                             if m[3] == call: # we sent it
                                 msg = mycall + ": " + msg
