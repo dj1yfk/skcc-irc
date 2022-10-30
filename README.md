@@ -53,6 +53,8 @@ are prefixed with an exclamation mark):
 
 * `!login <password>` - Log in again with the given password
 
+* `!pm <user> <message>` - Send personal message to user.
+
 A screenshot (with irssi as the client) is shown below.
 
 ![SKCC IRC Screenshot](doc/skcc-irc.png)
@@ -65,9 +67,27 @@ Currently the following functions are not implemented yet:
 
 - ~~Updates of messages sent by other users~~
 
-- ~~Personal messages~~ PMs are implemented, but currently only "active" users
-  (which show up in the list) are able to send and receive PMs via IRC.
+- ~~Personal messages~~ 
 
+### Personal Messages
+
+PMs are implemented but there are some things that are working differently from
+the web chat:
+
+* PMs from users who are active in the channel will show up as direct messages
+  to you in your IRC client. You can reply to them as you would expect it.
+
+* If a user is *not* on the "active" list and sends you a PM, it will be
+  shown in the main channel, like this: `PM WB6LQR -> DJ5CW: Hello`.
+
+* Replies to an inactive user can only be sent by a text command in the main
+  channel: `!pm <user> <message>`.
+
+The reason for this is simple: Only users who are on the "active" list are
+joined in the IRC channel as virtual clients, and therefore you can only
+communicate with then. The SKCC chat page however allows sending direct
+messages even by and between inactive users, which is not how things work
+on IRC.  
 
 ## Requirements
 

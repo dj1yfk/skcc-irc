@@ -140,9 +140,20 @@ def main_irc():
                     lastmsg = 0
                     for i in reversed(range(0, len(pmsgs))):
                         m = pmsgs[i]
+                        msg = ""
                         # if recipient or sender matches our client call, make this a IRC privmsg.
                         if (m[2] == call and m[3] == mycall) or (m[2] == mycall and m[3] == call): 
                             msg = m[4]
+                            dst = mycall    # send as direct message to user
+                        # if we are the recipient/sender but the other party is
+                        # not joined in the channel, the 'skcc' user will take
+                        # over this message
+
+                        if call == "skcc" and ((m[3] == mycall and m[2] not in users) or ((m[2] == mycall and m[3] not in users))):
+                            msg = "PM " + m[2] + " -> " + m[3] + ": " + m[4]
+                            dst = "#skcc"   # send to main channel
+
+                        if msg:
                             if m[3] == call: # we sent it
                                 msg = mycall + ": " + msg
                             else:
@@ -151,7 +162,7 @@ def main_irc():
                                 dt = datetime.utcfromtimestamp(int(m[1]))
                                 ts = dt.strftime("%H:%M:%S")
                                 msg = ts + ' ' + msg
-                            client.send(bytes('PRIVMSG ' + mycall + ' :' + msg +' \r\n', encoding='utf8'))
+                            client.send(bytes('PRIVMSG ' + dst + ' :' + msg +' \r\n', encoding='utf8'))
                     if lastmsg > 0:
                         r.publish('skcc-up', '{"read":["' + call + '",' + str(lastmsg) + ']}');
 
@@ -212,6 +223,10 @@ def main_irc():
                                 r.publish('skcc-up', '{"away": 1}')
                             elif cmd == "!active":
                                 r.publish('skcc-up', '{"active": 1}')
+                            elif cmd == "!pm":
+                                dest, txt = param.split(" ", 1)
+                                rep = '{"pm-msg": ["' + mycall + '", "' + dest + '", "' + txt + '"]}'
+                                r.publish('skcc-up', rep)
                             else:
                                 logging.warning("{}: Unknown command: {}".format(call, txmsg))
 
@@ -219,7 +234,7 @@ def main_irc():
                             r.publish('skcc-up', '{"active": 1}')
                         
                         else:   # normal message
-                            r.publish('skcc-up', '{"msg":["DJ5CW","' + txmsg + '"]}')
+                            r.publish('skcc-up', '{"msg":["' + mycall + '","' + txmsg + '"]}')
                             r.publish('skcc-up', '{"active": 1}')
 
     # launch "skcc" user client who will do stuff such as setting the channel topic
